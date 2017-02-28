@@ -31,44 +31,41 @@ def get_landmarks_with_point(image, frame):
         xcentral = [(x-xmean) for x in xlist]
         ycentral = [(y-ymean) for y in ylist]
 
-        #prevent divided by 0 value
+        #If x-coordinates of the set are the same, the angle is 0, catch to prevent 'divide by 0' error in function
         if xlist[11] == xlist[14]:
-            angle_nose = 0
+            anglenose = 0
         else:
-            #point 14 is the tip of the nose, point 11 is the top of the nose brigde
-            angle_nose = int(math.atan((ylist[11]-ylist[14])/(xlist[11]-xlist[14]))*180/math.pi)
+            #point 29 is the tip of the nose, point 26 is the top of the nose brigde
+            anglenose = int(math.atan((ylist[11]-ylist[14])/(xlist[11]-xlist[14]))*180/math.pi)
 
         #Get offset by finding how the nose brigde should be rotated to become perpendicular to the horizontal plane
-        if angle_nose < 0:
-            angle_nose += 90
+        if anglenose < 0:
+            anglenose += 90
         else:
-            angle_nose -= 90
+            anglenose -= 90
 
-        landmarks = []
-        for cx,cy,x,y in zip(xcentral, ycentral, xlist, ylist):
+        landmarks_vectorised = []
+        for x,y,w,z in zip(xcentral, ycentral, xlist, ylist):
             #Add the coordinates relative to the centre of gravity
-            landmarks.append(cx)
-            landmarks.append(cy)
+            landmarks_vectorised.append(x)
+            landmarks_vectorised.append(y)
 
             #Get the euclidean distance between each point and the centre point (the vector length)
             meannp = np.asarray((ymean,xmean))
-            coornp = np.asarray((y,x))
+            coornp = np.asarray((z,w))
             dist = np.linalg.norm(coornp-meannp)
-            #print(w-xmean)
             #Get the angle the vector describes relative to the image, corrected for the offset that the nosebrigde has when the face is not perfectly horizontal
-            if x == xmean:
-                angle_relative = 0
+            if w == xmean:
+                anglerelative = 0 - anglenose
             else:
-                angle_relative = (math.atan(float(y-ymean)/(x-xmean))*180/math.pi) - angle_nose
-                #print(anglerelative)
-            landmarks.append(dist)
-            landmarks.append(angle_relative)
-        #print('Length x: %d' % len(xcentral))
+                anglerelative = (math.atan(float(z-ymean)/(w-xmean))*180/math.pi) - anglenose
+            landmarks_vectorised.append(dist)
+            landmarks_vectorised.append(anglerelative)
 
     if len(detections) < 1:
         #If no face is detected set the data to value "error" to catch detection errors
-        landmarks = "error"
-    return landmarks
+        landmarks_vectorised = "error"
+    return landmarks_vectorised
 
 def show_webcam_and_run(model, emotions, window_size=None, window_name='webcam', update_time=10):
     cv2.namedWindow(window_name, WINDOW_NORMAL)
@@ -116,7 +113,7 @@ def show_webcam_and_run(model, emotions, window_size=None, window_name='webcam',
 
 def show_image_test(model, emotions):
     training_data = []
-    image = cv2.imread('datatest/face4.jpg')
+    image = cv2.imread('datatest/face6.jpg')
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
     clahe_image = clahe.apply(gray)

@@ -11,112 +11,114 @@ import os
 from sklearn.metrics import classification_report, confusion_matrix
 
 #Emotion list
+#emotions = ["anger", "contempt", "disgust", "fear", "happy", "neutral", "sadness", "surprise"]
 emotions = ["anger", "disgust", "happy", "neutral", "surprise"]
 clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
 detector = dlib.get_frontal_face_detector()
-model = dlib.shape_predictor("shape_predictor_68_face_landmarks.dat")
-clf = SVC(C=0.001, kernel='linear', decision_function_shape='ovo', probability=True)   #Set the classifier as a support vector machines with linear kernel
+predictor = dlib.shape_predictor("shape_predictor_68_face_landmarks.dat")  #Or set this to whatever you named the downloaded file
+clf = SVC(C=0.001, kernel='linear', decision_function_shape='ovo', probability=True)   #Set the classifier as a support vector machines with polynomial kernel
 
+#Define function to get file list, randomly shuffle it and split 80/20
 def get_files(emotion):
     files = glob.glob("dataset_combine\\%s\\*" %emotion)
     random.shuffle(files)
-    training = files[:int(len(files)*0.8)]   #get 80% of image files to be trained
-    testing = files[-int(len(files)*0.2):]   #get 20% of image files to be tested
-    return training, testing
+    training = files[:int(len(files)*0.8)]   #get first 80% of file list
+    prediction = files[-int(len(files)*0.2):]   #get last 20% of file list
+    return training, prediction
 
 def get_landmarks(image):
     detections = detector(image, 1)
     #For all detected face instances individually
     for k,d in enumerate(detections):
         #Draw Facial Landmarks with the predictor class
-        shape = model(image, d)
+        shape = predictor(image, d)
         xlist = []
         ylist = []
         for i in range(17, 68):
             xlist.append(float(shape.part(i).x))
             ylist.append(float(shape.part(i).y))
-
-        #center points of both axis
+        #Find both coordinates of centre of gravity
         xmean = np.mean(xlist)
         ymean = np.mean(ylist)
-        #Calculate distance between particular points and center point
+        #Calculate distance centre <-> other points in both axes
         xcentral = [(x-xmean) for x in xlist]
         ycentral = [(y-ymean) for y in ylist]
 
-        #prevent divided by 0 value
+        #If x-coordinates of the set are the same, the angle is 0, catch to prevent 'divide by 0' error in function
         if xlist[11] == xlist[14]:
-            angle_nose = 0
+            anglenose = 0
         else:
-            #point 14 is the tip of the nose, point 11 is the top of the nose brigde
-            angle_nose = int(math.atan((ylist[11]-ylist[14])/(xlist[11]-xlist[14]))*180/math.pi)
+            #point 29 is the tip of the nose, point 26 is the top of the nose brigde
+            anglenose = int(math.atan((ylist[11]-ylist[14])/(xlist[11]-xlist[14]))*180/math.pi)
 
         #Get offset by finding how the nose brigde should be rotated to become perpendicular to the horizontal plane
-        if angle_nose < 0:
-            angle_nose += 90
+        if anglenose < 0:
+            anglenose += 90
         else:
-            angle_nose -= 90
+            anglenose -= 90
 
-        landmarks = []
-        for cx,cy,x,y in zip(xcentral, ycentral, xlist, ylist):
+        landmarks_vectorised = []
+        for x,y,w,z in zip(xcentral, ycentral, xlist, ylist):
             #Add the coordinates relative to the centre of gravity
-            landmarks.append(cx)
-            landmarks.append(cy)
+            landmarks_vectorised.append(x)
+            landmarks_vectorised.append(y)
 
             #Get the euclidean distance between each point and the centre point (the vector length)
             meannp = np.asarray((ymean,xmean))
-            coornp = np.asarray((y,x))
+            coornp = np.asarray((z,w))
             dist = np.linalg.norm(coornp-meannp)
             #print(w-xmean)
             #Get the angle the vector describes relative to the image, corrected for the offset that the nosebrigde has when the face is not perfectly horizontal
-            if x == xmean:
-                angle_relative = 0
+            if w == xmean:
+                anglerelative = 0 - anglenose
             else:
-                angle_relative = (math.atan(float(y-ymean)/(x-xmean))*180/math.pi) - angle_nose
+                anglerelative = (math.atan(float(z-ymean)/(w-xmean))*180/math.pi) - anglenose
                 #print(anglerelative)
-            landmarks.append(dist)
-            landmarks.append(angle_relative)
+            landmarks_vectorised.append(dist)
+            landmarks_vectorised.append(anglerelative)
         #print('Length x: %d' % len(xcentral))
 
     if len(detections) < 1:
         #If no face is detected set the data to value "error" to catch detection errors
-        landmarks = "error"
-    return landmarks
+        landmarks_vectorised = "error"
+    return landmarks_vectorised
 
 def make_sets():
     training_data = []
-    training_label = []
-    testing_data = []
-    testing_label = []
+    training_labels = []
+    prediction_data = []
+    prediction_labels = []
     for emotion in emotions:
-        training, testing = get_files(emotion)
+        training, prediction = get_files(emotion)
         #Append data to traing and prediction list, and generate labels 0-7
         for item in training:
             #open image
             image = cv2.imread(item)
             #convert to grayscale
-            gray_img = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-            clahe_image = clahe.apply(gray_img)
-            landmarks_vec = get_landmarks(clahe_image)
-
-            if landmarks_vec == "error":
+            gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+            clahe_image = clahe.apply(gray)
+            landmarks_vectorised = get_landmarks(clahe_image)
+            #print("Hello 1")
+            if landmarks_vectorised == "error":
                 pass
             else:
                 #append image array to trainging data list
-                training_data.append(landmarks_vec)
-                training_label.append(emotions.index(emotion))
+                training_data.append(landmarks_vectorised)
+                training_labels.append(emotions.index(emotion))
 
-        for item in testing:
+        for item in prediction:
             image = cv2.imread(item)
-            gray_img = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-            clahe_image = clahe.apply(gray_img)
-            landmarks_vec = get_landmarks(clahe_image)
-            if landmarks_vec == "error":
+            gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+            clahe_image = clahe.apply(gray)
+            landmarks_vectorised = get_landmarks(clahe_image)
+            #print("Hello 2")
+            if landmarks_vectorised == "error":
                 pass
             else:
-                testing_data.append(landmarks_vec)
-                testing_label.append(emotions.index(emotion))
+                prediction_data.append(landmarks_vectorised)
+                prediction_labels.append(emotions.index(emotion))
 
-    return training_data, training_label, testing_data, testing_label
+    return training_data, training_labels, prediction_data, prediction_labels
 
 def create_model():
     accur_lin = []
@@ -127,11 +129,11 @@ def create_model():
         X_train, y_train, X_test, y_test = make_sets()
 
         #Turn the training set into a numpy array for the classifier
-        np_train = np.array(X_train)
-        np_test = np.array(y_train)
+        npar_train = np.array(X_train)
+        npar_trainlabs = np.array(y_train)
         #train SVM
         print("Trainging SVM Classifier %s" %i)
-        clf.fit(np_train, np_test)
+        clf.fit(npar_train, npar_trainlabs)
 
         #Use score() function to get accuracy
         print("Getting accuracy score -- %s" %i)

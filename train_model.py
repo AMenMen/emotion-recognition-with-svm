@@ -171,6 +171,6 @@ if __name__ == '__main__':
         os.remove('models\model1.pkl')
     except OSError:
         pass
-    output = open('models\model_5emo.pkl', 'wb')
+    output = open('models\model1.pkl', 'wb')
     pickle.dump(max_clf, output)
     output.close()
